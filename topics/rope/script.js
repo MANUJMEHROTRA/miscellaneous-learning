@@ -22,6 +22,10 @@ const elements = {
   distance: document.querySelector("#distance-value"),
   rotationCanvas: document.querySelector("#rotation-canvas"),
   curveCanvas: document.querySelector("#curve-canvas"),
+  toyForm: document.querySelector("#toy-form"),
+  toyQuery: document.querySelector("#toy-query-position"),
+  toyKey: document.querySelector("#toy-key-position"),
+  toyResult: document.querySelector("#toy-result"),
 };
 
 const numberFormat = new Intl.NumberFormat("en-US");
@@ -200,11 +204,29 @@ function update() {
   elements.contextValue.textContent = numberFormat.format(Number(elements.context.value));
   elements.frequency.textContent = `${frequency.toExponential(3)} rad/token`;
   elements.score.textContent = score.toFixed(3);
-  elements.distance.textContent = `${numberFormat.format(Math.abs(delta))} tokens`;
+  elements.distance.textContent = `${delta < 0 ? "−" : ""}${numberFormat.format(Math.abs(delta))} tokens`;
 
   drawRotation(queryPosition, keyPosition, frequency);
   drawCurve(queryPosition, keyPosition, pairIndex, frequency);
 }
+
+elements.toyForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const queryPosition = elements.toyQuery.valueAsNumber;
+  const keyPosition = elements.toyKey.valueAsNumber;
+  const validPosition = (value) => Number.isInteger(value) && value >= 0 && value <= 100000;
+
+  if (!validPosition(queryPosition) || !validPosition(keyPosition)) {
+    elements.toyResult.textContent = "Enter whole-number positions from 0 to 100,000.";
+    return;
+  }
+
+  const delta = keyPosition - queryPosition;
+  const score = Math.cos((delta * Math.PI) / 6);
+  elements.toyResult.textContent =
+    `Δ = ${delta}; angle difference = ${delta}π/6 radians; ` +
+    `score = cos(${delta}π/6) = ${score.toFixed(3)}`;
+});
 
 for (const control of [elements.query, elements.key, elements.pair, elements.mode, elements.context]) {
   control.addEventListener("input", update);

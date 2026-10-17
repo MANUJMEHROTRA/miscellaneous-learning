@@ -43,17 +43,70 @@
 
       <section class="concept-strip" aria-label="Lesson outline">
         <div class="page-shell concept-grid">
-          <a href="#intuition"><span>01</span> The idea</a>
-          <a href="#playground"><span>02</span> The playground</a>
-          <a href="#math"><span>03</span> The math</a>
-          <a href="#yarn"><span>04</span> YaRN &amp; scaling</a>
-          <a href="#training"><span>05</span> Training &amp; inference</a>
+          <a href="#background"><span>01</span> Attention basics</a>
+          <a href="#intuition"><span>02</span> RoPE intuition</a>
+          <a href="#worked-example"><span>03</span> Pen-and-paper example</a>
+          <a href="#math"><span>04</span> The proof</a>
+          <a href="#playground"><span>05</span> Playground</a>
+          <a href="#yarn"><span>06</span> YaRN &amp; scaling</a>
+          <a href="#training"><span>07</span> Training</a>
+        </div>
+      </section>
+
+      <section class="section page-shell background-section" id="background">
+        <div class="section-heading">
+          <p class="eyebrow">01 / Before RoPE: attention basics</p>
+          <h2>First, what is attention trying to calculate?</h2>
+          <p>
+            A language model turns each token into vectors. For one attention head,
+            it makes a <strong>query</strong> (what this token is looking for) and a
+            <strong>key</strong> (what another token offers). Their dot product is a
+            compatibility score.
+          </p>
+        </div>
+        <div class="background-flow">
+          <article class="background-card">
+            <span class="background-number">1</span>
+            <h3>Make query and key</h3>
+            <p>Learned linear layers turn token representations into vectors.</p>
+            <div class="background-equation">q<sub>m</sub> = W<sub>Q</sub>x<sub>m</sub><br>k<sub>n</sub> = W<sub>K</sub>x<sub>n</sub></div>
+          </article>
+          <span class="background-arrow" aria-hidden="true">→</span>
+          <article class="background-card">
+            <span class="background-number">2</span>
+            <h3>Compare them</h3>
+            <p>A dot product is large when the vectors point in similar directions.</p>
+            <div class="background-equation">score = q<sub>m</sub><sup>T</sup>k<sub>n</sub></div>
+          </article>
+          <span class="background-arrow" aria-hidden="true">→</span>
+          <article class="background-card">
+            <span class="background-number">3</span>
+            <h3>Use the scores</h3>
+            <p>Softmax turns scores into weights. The model uses them to mix value vectors.</p>
+            <div class="background-equation">weights = softmax(scores / √d<sub>h</sub>)</div>
+          </article>
+        </div>
+        <aside class="note">
+          <span class="note-icon" aria-hidden="true">↳</span>
+          <p><strong>The missing ingredient:</strong> without position information, attention's comparison doesn't inherently know which token came first. RoPE changes the query–key comparison so it carries position information too. It does not replace the rest of attention.</p>
+        </aside>
+        <div class="background-contrast">
+          <div>
+            <span class="detail-label">ONE COMMON APPROACH</span>
+            <p><strong>Add a position vector:</strong> combine a token representation and a positional vector before later layers process it.</p>
+            <span class="contrast-equation">x<sub>p</sub> + position<sub>p</sub></span>
+          </div>
+          <div>
+            <span class="detail-label">RoPE'S APPROACH</span>
+            <p><strong>Rotate query and key pairs:</strong> apply position-dependent rotations to the projected query and key. Their dot product then reflects their relative offset.</p>
+            <span class="contrast-equation">R<sub>m</sub>q &nbsp; and &nbsp; R<sub>n</sub>k</span>
+          </div>
         </div>
       </section>
 
       <section class="section page-shell" id="intuition">
         <div class="section-heading">
-          <p class="eyebrow">01 / The idea</p>
+          <p class="eyebrow">02 / RoPE intuition</p>
           <h2>Position, encoded as a turn.</h2>
           <p>
             Attention needs to know not just <em>what</em> a token says, but where it
@@ -87,14 +140,89 @@
         </aside>
       </section>
 
+      <section class="worked-section" id="worked-example">
+        <div class="page-shell">
+          <div class="section-heading">
+            <p class="eyebrow">03 / Pen-and-paper example</p>
+            <h2>Calculate one RoPE attention score by hand.</h2>
+            <p>
+              We will use just two coordinates—the smallest possible RoPE example.
+              The numbers are deliberately friendly. Grab paper and follow the
+              rotations before revealing each arithmetic step.
+            </p>
+          </div>
+          <div class="worked-setup">
+            <span class="setup-label">OUR TOY SETUP</span>
+            <div class="setup-values">
+              <div><span>Query content</span><strong>q = (1, 0)</strong></div>
+              <div><span>Key content</span><strong>k = (1, 0)</strong></div>
+              <div><span>One-pair frequency</span><strong>ω = π/6 radians per token</strong></div>
+              <div><span>Token positions</span><strong>query m = 1, key n = 3</strong></div>
+            </div>
+            <p>Both content vectors start pointing right. RoPE turns each by its position multiplied by ω. Ignore softmax and the multi-head scaling for this toy calculation—we are finding just one pair's raw dot-product contribution.</p>
+          </div>
+          <div class="worked-steps">
+            <article class="worked-step">
+              <span class="step-tag">STEP 1</span>
+              <h3>Write down the rotation rule</h3>
+              <p>Rotating the unit vector (1, 0) by angle α gives (cos α, sin α).</p>
+              <div class="paper-equation">R(α)(1, 0) = (cos α, sin α)</div>
+              <details><summary>Why is that true?</summary><p>Multiply the rotation matrix by the vector: [cos α  −sin α; sin α  cos α] · [1; 0] = [cos α; sin α]. The second column is multiplied by zero.</p></details>
+            </article>
+            <article class="worked-step">
+              <span class="step-tag">STEP 2</span>
+              <h3>Rotate the query at position 1</h3>
+              <p>Its angle is mω = 1 · π/6 = π/6 (30°).</p>
+              <div class="paper-equation">q<sub>1</sub> = (cos π/6, sin π/6) = (√3/2, 1/2)</div>
+              <details><summary>Check the exact trig values</summary><p>On the 30°–60°–90° triangle, cos 30° = √3/2 and sin 30° = 1/2.</p></details>
+            </article>
+            <article class="worked-step">
+              <span class="step-tag">STEP 3</span>
+              <h3>Rotate the key at position 3</h3>
+              <p>Its angle is nω = 3 · π/6 = π/2 (90°).</p>
+              <div class="paper-equation">k<sub>3</sub> = (cos π/2, sin π/2) = (0, 1)</div>
+              <details><summary>Check the exact trig values</summary><p>A 90° rotation takes (1, 0) straight up: cos 90° = 0 and sin 90° = 1.</p></details>
+            </article>
+            <article class="worked-step worked-answer">
+              <span class="step-tag">STEP 4</span>
+              <h3>Take their dot product</h3>
+              <p>Multiply matching coordinates, then add.</p>
+              <div class="paper-equation">(√3/2) · 0 + (1/2) · 1 = <strong>1/2</strong></div>
+              <details><summary>So what was the point?</summary><p>The position-aware query–key score for this pair is 1/2. It is not "the distance" by itself: it depends both on the query/key content directions and on how far apart their positions are.</p></details>
+            </article>
+          </div>
+          <div class="same-distance">
+            <div>
+              <span class="step-tag">THE KEY EXPERIMENT</span>
+              <h3>Move both tokens together. Does the score change?</h3>
+              <p>Shift positions (1, 3) to (11, 13). The separation is still 2. For the same unit vectors, the angles are 11π/6 and 13π/6.</p>
+              <details><summary>Work out the shifted vectors and compare</summary><p>q<sub>11</sub> = (cos 11π/6, sin 11π/6) = (√3/2, −1/2). k<sub>13</sub> = (cos 13π/6, sin 13π/6) = (√3/2, 1/2), since 13π/6 = 2π + π/6. Their dot product is (√3/2)(√3/2) + (−1/2)(1/2) = 3/4 − 1/4 = <strong>1/2</strong>. Same score: only the relative offset changed the result.</p></details>
+            </div>
+            <div class="toy-calculator">
+              <span class="detail-label">TRY A POSITION PAIR</span>
+              <p>Keep q = k = (1, 0) and ω = π/6. Choose positions and calculate the pair score.</p>
+              <form id="toy-form" class="calculator-fields">
+                <label for="toy-query-position">Query m<input id="toy-query-position" type="number" min="0" max="100000" step="1" value="1"></label>
+                <label for="toy-key-position">Key n<input id="toy-key-position" type="number" min="0" max="100000" step="1" value="3"></label>
+                <button id="toy-calculate" type="submit">Calculate</button>
+              </form>
+              <output id="toy-result" class="toy-result" aria-live="polite">Δ = 2; angle difference = 2π/6 = π/3; score = cos(π/3) = 0.500</output>
+              <p class="calculator-hint">Try (1, 3), then (11, 13). The positions changed; the offset and score did not.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section class="playground-section" id="playground">
         <div class="page-shell">
           <div class="section-heading playground-heading">
-            <p class="eyebrow">02 / Interactive playground</p>
+            <p class="eyebrow">05 / Interactive playground</p>
             <h2>Turn the knobs. Watch attention move.</h2>
             <p>
-              Explore one 2D feature pair at a time. This is a teaching model—not a
-              full transformer head, which combines many pairs.
+              This is a different, more general toy than the hand calculation above:
+              it includes content-vector directions and lets you compare RoPE,
+              interpolation, and a simplified YaRN-style blend. It shows one feature
+              pair—not a complete attention head, which combines many pairs.
             </p>
           </div>
           <div class="lab">
@@ -152,7 +280,7 @@
                   <span class="legend-subtle">Angles shown modulo 2π</span>
                 </div>
                 <div class="score-row">
-                  <span>Pair contribution to query–key similarity</span>
+                  <span>One pair's q–k dot-product contribution</span>
                   <strong id="score-value">—</strong>
                 </div>
               </article>
@@ -162,7 +290,7 @@
                   <span class="curve-caption">same feature pair</span>
                 </div>
                 <canvas id="curve-canvas" aria-label="Chart of one feature pair's query–key similarity over relative token distance"></canvas>
-                <div class="curve-note"><span class="cursor-dot"></span> Selected distance <strong id="distance-value">384 tokens</strong><span class="curve-explainer">A single pair oscillates; a real head sums many frequencies.</span></div>
+                <div class="curve-note"><span class="cursor-dot"></span> Relative offset <strong id="distance-value">384 tokens</strong><span class="curve-explainer">A single pair oscillates; a real head sums many frequencies.</span></div>
               </article>
             </div>
           </div>
@@ -171,47 +299,53 @@
 
       <section class="section page-shell" id="math">
         <div class="section-heading">
-          <p class="eyebrow">03 / The mathematics</p>
-          <h2>Why a rotation tells you about distance.</h2>
-          <p>RoPE applies a different 2D rotation to every adjacent feature pair. Here is the two-dimensional version.</p>
+          <p class="eyebrow">04 / The proof</p>
+          <h2>Why does the score depend on relative distance?</h2>
+          <p>
+            The worked example showed one numerical case. Now we will prove the
+            same fact for any two query and key vectors in one rotated 2D feature
+            pair.
+          </p>
         </div>
         <div class="math-layout">
           <div class="math-explanation">
-            <h3>1. Build the rotation</h3>
-            <p>For a pair of coordinates, position <i>p</i> rotates the vector through angle <i>pω</i>:</p>
+            <h3>Step 1: define the rotation</h3>
+            <p>Let the position be p and the pair's frequency be ω. The angle is pω:</p>
             <div class="equation">
               <span class="equation-label">Rotation matrix</span>
               <span>R<sub>p,ω</sub> = <span class="matrix">[ cos(pω) &nbsp; −sin(pω)<br>sin(pω) &nbsp;&nbsp; cos(pω) ]</span></span>
             </div>
-            <h3>2. Give each pair its own pace</h3>
-            <p>With head dimension <i>d</i>, pair <i>i</i> uses frequency <i>ω<sub>i</sub></i>. The standard inverse-frequency schedule is geometric:</p>
+            <h3>In the full head: give every pair its own pace</h3>
+            <p>For head dimension d, pair i uses its own frequency ω<sub>i</sub>. A common RoPE schedule is geometric:</p>
             <div class="equation">
               <span class="equation-label">RoPE frequencies</span>
               <span>ω<sub>i</sub> = 1 / θ<sup>2i/d</sup>, &nbsp; θ = 10,000</span>
             </div>
-            <p>Lower-index pairs have higher frequencies; higher-index pairs turn more slowly. Implementations may vary the base or scaling strategy.</p>
+            <p>Low-index pairs turn quickly; high-index pairs turn slowly. This toy proof needs only one pair. Real attention sums the contributions of many pairs. Implementations can vary the base and scaling strategy.</p>
           </div>
           <div class="derivation-card">
-            <span class="derivation-label">THE KEY IDENTITY</span>
-            <div class="derivation-step"><span>Rotate query and key</span><code>(R<sub>m</sub>q)<sup>T</sup>(R<sub>n</sub>k)</code></div>
-            <div class="derivation-arrow">↓ &nbsp; rotations preserve dot products</div>
-            <div class="derivation-step"><span>Combine the rotations</span><code>q<sup>T</sup>R<sub>m</sub><sup>T</sup>R<sub>n</sub>k</code></div>
-            <div class="derivation-arrow">↓ &nbsp; R(m)<sup>T</sup> = R(−m)</div>
-            <div class="derivation-result"><span>Only the relative offset remains</span><code>q<sup>T</sup>R<sub>n−m</sub>k</code></div>
-            <p>For a whole head, this relation holds pair by pair. The combined attention score mixes their different frequencies.</p>
+            <span class="derivation-label">PROOF: RELATIVE-POSITION IDENTITY</span>
+            <p class="proof-intro">Let q and k be the unrotated query and key for this pair. Their positions are m and n; both use the same frequency ω.</p>
+            <div class="proof-line"><span>1. Apply RoPE at each position</span><code>q<sub>m</sub> = R(mω)q, &nbsp; k<sub>n</sub> = R(nω)k</code></div>
+            <div class="proof-line"><span>2. Write their dot product</span><code>q<sub>m</sub><sup>T</sup>k<sub>n</sub> = q<sup>T</sup>R(mω)<sup>T</sup>R(nω)k</code></div>
+            <div class="proof-line"><span>3. A rotation's transpose reverses its angle</span><code>R(α)<sup>T</sup> = R(−α)</code></div>
+            <div class="proof-line"><span>4. Rotations add their angles when composed</span><code>R(a)R(b) = R(a + b)</code></div>
+            <div class="derivation-result"><span>Therefore, only the offset n − m remains</span><code>q<sub>m</sub><sup>T</sup>k<sub>n</sub> = q<sup>T</sup>R((n − m)ω)k</code></div>
+            <details class="proof-details"><summary>Why do the two matrix facts hold?</summary><p>Transposing [cos α  −sin α; sin α  cos α] gives [cos α  sin α; −sin α  cos α], which is R(−α). Multiplying R(a)R(b) and using cos(a+b) = cos a cos b − sin a sin b and sin(a+b) = sin a cos b + cos a sin b gives R(a+b).</p></details>
+            <p>This proves the identity for one 2D pair. Applying it to every pair gives the full head's score as a sum of content-dependent terms, each encoding the same relative offset at a different frequency.</p>
           </div>
         </div>
         <div class="equation-wide">
-          <span>For a fixed pair, the score varies with relative distance Δ = n − m:</span>
-          <strong>score(Δ) = ‖q‖ ‖k‖ cos(Δω + φ<sub>k</sub> − φ<sub>q</sub>)</strong>
-          <span class="equation-footnote">This is why position is relative in the attention score, even though each vector is rotated using its absolute position.</span>
+          <span>For a fixed pair, write q and k using their lengths and angles φ<sub>q</sub>, φ<sub>k</sub>. With Δ = n − m:</span>
+          <strong>score = ‖q‖ ‖k‖ cos(Δω + φ<sub>k</sub> − φ<sub>q</sub>)</strong>
+          <span class="equation-footnote">Position contributes through Δ, while the content directions contribute through the vector lengths and angles. This is one pair's raw score; a full attention head sums pairs and usually scales the result before softmax.</span>
         </div>
       </section>
 
       <section class="yarn-section" id="yarn">
         <div class="page-shell">
           <div class="section-heading">
-            <p class="eyebrow">04 / YaRN &amp; extending context</p>
+            <p class="eyebrow">06 / YaRN &amp; extending context</p>
             <h2>Stretch carefully, not uniformly.</h2>
             <p>
               A model trained for a shorter context has only learned positional patterns
@@ -257,7 +391,7 @@
 
       <section class="section page-shell" id="training">
         <div class="section-heading">
-          <p class="eyebrow">05 / Training &amp; inference</p>
+          <p class="eyebrow">07 / Training &amp; inference</p>
           <h2>How does a model get a longer window?</h2>
           <p>
             A context limit is not just a slider at inference time. Positional encoding,
