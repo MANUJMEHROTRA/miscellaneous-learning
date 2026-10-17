@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="An interactive guide to rotary positional embeddings, YaRN, and extending context windows."
+    />
+    <title>RoPE, YaRN &amp; Long Context — Learning Lab</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="./script.js" defer></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="wordmark" href="#top" aria-label="Learning Lab home">
+        <span class="wordmark-mark">L</span>
+        <span>Learning Lab</span>
+      </a>
+      <a class="header-link" href="../../README.md">All topics <span aria-hidden="true">↗</span></a>
+    </header>
+
+    <main id="top">
+      <section class="hero page-shell">
+        <div class="hero-copy">
+          <p class="eyebrow"><span class="eyebrow-dot"></span> A visual guide to positional information</p>
+          <h1>RoPE, YaRN <span>&amp; the long view.</span></h1>
+          <p class="hero-description">
+            See how rotation gives attention a sense of distance, why long positions
+            can become tricky, and how frequency scaling helps models reach farther.
+          </p>
+          <a class="text-link" href="#playground">Start experimenting <span aria-hidden="true">↓</span></a>
+        </div>
+        <div class="hero-orbit" aria-hidden="true">
+          <div class="orbit orbit-one"></div>
+          <div class="orbit orbit-two"></div>
+          <div class="orbit orbit-three"></div>
+          <span class="orbit-center">θ</span>
+          <span class="orbit-label orbit-label-top">position</span>
+          <span class="orbit-label orbit-label-bottom">rotation</span>
+        </div>
+      </section>
+
+      <section class="concept-strip" aria-label="Lesson outline">
+        <div class="page-shell concept-grid">
+          <a href="#intuition"><span>01</span> The idea</a>
+          <a href="#playground"><span>02</span> The playground</a>
+          <a href="#math"><span>03</span> The math</a>
+          <a href="#yarn"><span>04</span> YaRN &amp; scaling</a>
+          <a href="#training"><span>05</span> Training &amp; inference</a>
+        </div>
+      </section>
+
+      <section class="section page-shell" id="intuition">
+        <div class="section-heading">
+          <p class="eyebrow">01 / The idea</p>
+          <h2>Position, encoded as a turn.</h2>
+          <p>
+            Attention needs to know not just <em>what</em> a token says, but where it
+            sits. RoPE (Rotary Position Embedding) injects position by rotating pairs
+            of query and key features by position-dependent angles.
+          </p>
+        </div>
+        <div class="idea-grid">
+          <article class="idea-card">
+            <span class="card-number">A</span>
+            <h3>Pair up features</h3>
+            <p>Take two coordinates from a query or key vector. Treat them as a point on a plane.</p>
+            <div class="mini-vector" aria-hidden="true"><span></span><i></i><b>q</b></div>
+          </article>
+          <article class="idea-card">
+            <span class="card-number">B</span>
+            <h3>Rotate by position</h3>
+            <p>At token position <i>p</i>, rotate that point by <i>p</i> times this pair's frequency.</p>
+            <div class="mini-rotate" aria-hidden="true">↻<small>p · ω</small></div>
+          </article>
+          <article class="idea-card">
+            <span class="card-number">C</span>
+            <h3>Compare the turns</h3>
+            <p>The query–key dot product now depends on their relative positions, not just their content.</p>
+            <div class="mini-equation" aria-hidden="true">R(m)<sup>T</sup>R(n) = R(n − m)</div>
+          </article>
+        </div>
+        <aside class="note">
+          <span class="note-icon" aria-hidden="true">↳</span>
+          <p><strong>Useful intuition:</strong> different feature pairs turn at different speeds. Fast turns help distinguish nearby positions; slow turns change gradually over longer distances.</p>
+        </aside>
+      </section>
+
+      <section class="playground-section" id="playground">
+        <div class="page-shell">
+          <div class="section-heading playground-heading">
+            <p class="eyebrow">02 / Interactive playground</p>
+            <h2>Turn the knobs. Watch attention move.</h2>
+            <p>
+              Explore one 2D feature pair at a time. This is a teaching model—not a
+              full transformer head, which combines many pairs.
+            </p>
+          </div>
+          <div class="lab">
+            <div class="controls">
+              <div class="control-heading">
+                <span class="control-icon" aria-hidden="true">⌘</span>
+                <div><h3>Set up the experiment</h3><p>Each change updates the plots.</p></div>
+              </div>
+
+              <label class="slider-control" for="query-position">
+                <span class="slider-label">Query position <output id="query-position-value">128</output></span>
+                <input id="query-position" type="range" min="0" max="8192" step="1" value="128" />
+                <span class="range-hints"><span>0</span><span>16,384 tokens</span></span>
+              </label>
+              <label class="slider-control" for="key-position">
+                <span class="slider-label">Key position <output id="key-position-value">512</output></span>
+                <input id="key-position" type="range" min="0" max="8192" step="1" value="512" />
+                <span class="range-hints"><span>0</span><span>16,384 tokens</span></span>
+              </label>
+              <label class="slider-control" for="pair-index">
+                <span class="slider-label">Feature-pair index <output id="pair-index-value">24 / 64</output></span>
+                <input id="pair-index" type="range" min="0" max="63" step="1" value="24" />
+                <span class="range-hints"><span>fast turn</span><span>slow turn</span></span>
+              </label>
+              <label class="select-control" for="scaling-mode">
+                <span class="slider-label">Position strategy</span>
+                <select id="scaling-mode">
+                  <option value="rope">Original RoPE</option>
+                  <option value="linear">Linear position interpolation</option>
+                  <option value="yarn" selected>YaRN-style frequency blend</option>
+                </select>
+              </label>
+              <label class="slider-control" for="context-length">
+                <span class="slider-label">Target context <output id="context-length-value">16,384</output></span>
+                <input id="context-length" type="range" min="4096" max="131072" step="4096" value="16384" />
+                <span class="range-hints"><span>4,096</span><span>131,072 tokens</span></span>
+              </label>
+              <div class="frequency-readout">
+                <span>Effective angular frequency</span>
+                <code id="frequency-value">—</code>
+              </div>
+              <p class="control-footnote">The extension factor is target context ÷ 4,096. The YaRN option uses a simplified smooth frequency blend for illustration.</p>
+            </div>
+
+            <div class="visuals">
+              <article class="visual-card rotation-card">
+                <div class="visual-card-heading">
+                  <div><span class="visual-kicker">VECTOR VIEW</span><h3>One pair, two positions</h3></div>
+                  <span class="live-tag"><i></i> LIVE</span>
+                </div>
+                <canvas id="rotation-canvas" aria-label="Interactive diagram of query and key vectors rotating by their token positions"></canvas>
+                <div class="legend">
+                  <span><i class="legend-query"></i>Query at m</span>
+                  <span><i class="legend-key"></i>Key at n</span>
+                  <span class="legend-subtle">Angles shown modulo 2π</span>
+                </div>
+                <div class="score-row">
+                  <span>Pair contribution to query–key similarity</span>
+                  <strong id="score-value">—</strong>
+                </div>
+              </article>
+              <article class="visual-card curve-card">
+                <div class="visual-card-heading">
+                  <div><span class="visual-kicker">DISTANCE VIEW</span><h3>Similarity across positions</h3></div>
+                  <span class="curve-caption">same feature pair</span>
+                </div>
+                <canvas id="curve-canvas" aria-label="Chart of one feature pair's query–key similarity over relative token distance"></canvas>
+                <div class="curve-note"><span class="cursor-dot"></span> Selected distance <strong id="distance-value">384 tokens</strong><span class="curve-explainer">A single pair oscillates; a real head sums many frequencies.</span></div>
+              </article>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section page-shell" id="math">
+        <div class="section-heading">
+          <p class="eyebrow">03 / The mathematics</p>
+          <h2>Why a rotation tells you about distance.</h2>
+          <p>RoPE applies a different 2D rotation to every adjacent feature pair. Here is the two-dimensional version.</p>
+        </div>
+        <div class="math-layout">
+          <div class="math-explanation">
+            <h3>1. Build the rotation</h3>
+            <p>For a pair of coordinates, position <i>p</i> rotates the vector through angle <i>pω</i>:</p>
+            <div class="equation">
+              <span class="equation-label">Rotation matrix</span>
+              <span>R<sub>p,ω</sub> = <span class="matrix">[ cos(pω) &nbsp; −sin(pω)<br>sin(pω) &nbsp;&nbsp; cos(pω) ]</span></span>
+            </div>
+            <h3>2. Give each pair its own pace</h3>
+            <p>With head dimension <i>d</i>, pair <i>i</i> uses frequency <i>ω<sub>i</sub></i>. The standard inverse-frequency schedule is geometric:</p>
+            <div class="equation">
+              <span class="equation-label">RoPE frequencies</span>
+              <span>ω<sub>i</sub> = 1 / θ<sup>2i/d</sup>, &nbsp; θ = 10,000</span>
+            </div>
+            <p>Lower-index pairs have higher frequencies; higher-index pairs turn more slowly. Implementations may vary the base or scaling strategy.</p>
+          </div>
+          <div class="derivation-card">
+            <span class="derivation-label">THE KEY IDENTITY</span>
+            <div class="derivation-step"><span>Rotate query and key</span><code>(R<sub>m</sub>q)<sup>T</sup>(R<sub>n</sub>k)</code></div>
+            <div class="derivation-arrow">↓ &nbsp; rotations preserve dot products</div>
+            <div class="derivation-step"><span>Combine the rotations</span><code>q<sup>T</sup>R<sub>m</sub><sup>T</sup>R<sub>n</sub>k</code></div>
+            <div class="derivation-arrow">↓ &nbsp; R(m)<sup>T</sup> = R(−m)</div>
+            <div class="derivation-result"><span>Only the relative offset remains</span><code>q<sup>T</sup>R<sub>n−m</sub>k</code></div>
+            <p>For a whole head, this relation holds pair by pair. The combined attention score mixes their different frequencies.</p>
+          </div>
+        </div>
+        <div class="equation-wide">
+          <span>For a fixed pair, the score varies with relative distance Δ = n − m:</span>
+          <strong>score(Δ) = ‖q‖ ‖k‖ cos(Δω + φ<sub>k</sub> − φ<sub>q</sub>)</strong>
+          <span class="equation-footnote">This is why position is relative in the attention score, even though each vector is rotated using its absolute position.</span>
+        </div>
+      </section>
+
+      <section class="yarn-section" id="yarn">
+        <div class="page-shell">
+          <div class="section-heading">
+            <p class="eyebrow">04 / YaRN &amp; extending context</p>
+            <h2>Stretch carefully, not uniformly.</h2>
+            <p>
+              A model trained for a shorter context has only learned positional patterns
+              over that range. Simply asking it to use much larger positions can push
+              RoPE into unfamiliar phases. YaRN is one method for adapting RoPE to longer
+              contexts without treating every frequency identically.
+            </p>
+          </div>
+          <div class="scaling-grid">
+            <article class="scaling-card">
+              <span class="scaling-number">01</span>
+              <h3>Original RoPE</h3>
+              <p>Keep the training frequencies. At larger positions, rotations travel farther into phase patterns the model may not have learned.</p>
+              <div class="frequency-bars original-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+              <span class="scaling-caption">No frequency changes</span>
+            </article>
+            <article class="scaling-card">
+              <span class="scaling-number">02</span>
+              <h3>Linear interpolation</h3>
+              <p>Divide positions—or equivalently all frequencies—by the extension factor. This stretches the learned range, but can blur useful short-distance distinctions.</p>
+              <div class="frequency-bars linear-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+              <span class="scaling-caption">All frequencies slowed equally</span>
+            </article>
+            <article class="scaling-card yarn-card">
+              <span class="scaling-number">03</span>
+              <h3>YaRN</h3>
+              <p>Blend between interpolated and original frequencies across feature dimensions. The transition is designed to preserve some local detail while extending longer-range behavior.</p>
+              <div class="frequency-bars yarn-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+              <span class="scaling-caption">A smooth, frequency-aware blend</span>
+            </article>
+          </div>
+          <div class="yarn-detail">
+            <div>
+              <span class="detail-label">SIMPLIFIED FREQUENCY BLEND</span>
+              <div class="blend-equation">ω′<sub>i</sub> = (1 − r<sub>i</sub>) · ω<sub>i</sub>/s + r<sub>i</sub> · ω<sub>i</sub></div>
+              <p><i>s</i> is the context extension factor. <i>r<sub>i</sub></i> moves smoothly from 0 to 1 across a transition band of frequency dimensions.</p>
+            </div>
+            <div class="detail-divider"></div>
+            <p class="detail-caveat"><strong>Important:</strong> production YaRN includes additional choices—such as how transition bounds are set and attention scaling. This lab's blend is a conceptual approximation, not a drop-in implementation or a claim that all models use the same settings.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section page-shell" id="training">
+        <div class="section-heading">
+          <p class="eyebrow">05 / Training &amp; inference</p>
+          <h2>How does a model get a longer window?</h2>
+          <p>
+            A context limit is not just a slider at inference time. Positional encoding,
+            training exposure, attention implementation, memory, and quality all matter.
+          </p>
+        </div>
+        <div class="training-flow">
+          <article><span>01</span><h3>Pretrain</h3><p>Learn language and attention patterns on sequences drawn from a training distribution. The maximum training length is not always the same as the final advertised window.</p></article>
+          <span class="flow-arrow" aria-hidden="true">→</span>
+          <article><span>02</span><h3>Extend</h3><p>Use positional scaling, continued pretraining, long-context fine-tuning, or a combination. Training examples should teach the model to use information across the longer span.</p></article>
+          <span class="flow-arrow" aria-hidden="true">→</span>
+          <article><span>03</span><h3>Serve</h3><p>Configure inference for that range and provide enough memory/compute. Then evaluate retrieval, reasoning, and quality at different positions—not only whether tokens fit.</p></article>
+        </div>
+        <aside class="caution">
+          <span class="caution-mark" aria-hidden="true">!</span>
+          <div><strong>What about GPT and Gemini?</strong><p>The exact architectures, positional schemes, training sequence lengths, and extension recipes for current GPT and Gemini models are generally not fully public. Do not assume they use RoPE or YaRN. The methods here describe published techniques and general ways long-context capability can be developed—not confirmed details of those product families.</p></div>
+        </aside>
+        <div class="takeaway">
+          <span class="takeaway-label">KEEP IN MIND</span>
+          <p>A larger context window means more tokens can be processed. It does <em>not</em> guarantee that the model will attend to, retrieve, or reason equally well over every token in that window.</p>
+        </div>
+      </section>
+
+      <section class="references-section">
+        <div class="page-shell references">
+          <div><p class="eyebrow">Go deeper</p><h2>Further reading</h2></div>
+          <ul>
+            <li><a href="https://arxiv.org/abs/2104.09864" target="_blank" rel="noreferrer">RoFormer: Enhanced Transformer with Rotary Position Embedding <span>↗</span></a><span>Su et al., 2021</span></li>
+            <li><a href="https://arxiv.org/abs/2306.15595" target="_blank" rel="noreferrer">Extending Context Window of Large Language Models via Positional Interpolation <span>↗</span></a><span>Chen et al., 2023</span></li>
+            <li><a href="https://arxiv.org/abs/2309.00071" target="_blank" rel="noreferrer">YaRN: Efficient Context Window Extension of Large Language Models <span>↗</span></a><span>Peng et al., 2023</span></li>
+            <li><a href="https://arxiv.org/abs/2402.13753" target="_blank" rel="noreferrer">LongRoPE: Extending LLM Context Window Beyond 2 Million Tokens <span>↗</span></a><span>Ding et al., 2024</span></li>
+          </ul>
+        </div>
+      </section>
+    </main>
+    <footer class="site-footer"><div class="page-shell"><span>Learning Lab</span><span>Built for curious minds · RoPE &amp; long context</span><a href="#top">Back to top ↑</a></div></footer>
+  </body>
+</html>
